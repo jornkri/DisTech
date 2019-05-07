@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Geotek 2019 - geodata as</title>
+    <style>
+        html,
+        body,
+        #viewDiv {
+            padding: 0;
+            margin: 0;
+            height: 100%;
+            width: 100%;
+        }
+        
+        #createSlideDiv {
+            background-color: white;
+            opacity: 0.9;
+            display: none;
+            color: black;
+            padding: 6px;
+        }
+        
+        #slidesDiv {
+            background-color: #fffdfd00;
+            opacity: 0.8;
+            color: white;
+            padding: 20px;
+            overflow: auto;
+            white-space: nowrap;
+            visibility: hidden;
+            bottom: 20px;
+            text-align: center;
+            height: 100px;
+            width: 100%;
+            display: block;
+            margin-right: auto;
+            margin-left: auto;
+            position: fixed;
+        }
+        
+        #slidesDiv .slide {
+            /* Show cursor as pointer when on a slide */
+            cursor: pointer;
+            margin-left: 20px;
+            display: inline-block;
+        }
+        
+        #slidesDiv .slide .title {
+            /* Center the title text */
+            text-align: center;
+        }
+        /* Draw active slide with a nice border around the thumbnail */
+        
+        #slidesDiv .slide.active img {
+            box-shadow: 0px 0px 12px black;
+            border-style: solid;
+            border-width: thin;
+            border-color: black;
+        }
+        
+        .esri-popup__main-container {
+            /* opacity: 0.4; */
+            box-shadow: 0px 0px 12px white;
+            background-color: #d41a1a;
+        }
+        
+        .esri-popup__footer {
+            align-items: center;
+            display: none !important;
+            flex: 0 0 auto;
+            justify-content: flex-end;
+        }
+        
+        .esri-popup__footer {
+            display: none;
+        }
+        
+        .esri-popup__header-title {
+            color: "rgba(0,0,0,1)";
+        }
+        
+        .esri-feature {
+            letter-spacing: 0em;
+            font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+            line-height: 1.55rem;
+            font-feature-settings: "liga"1, "calt"0;
+            background: #fff;
+            padding: 1em;
+        }
+        
+        .esri-feature__main-container {
+            margin-left: auto;
+            margin-right: auto;
+        }
+    </style>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.10/esri/css/main.css">
+
+    <script src="https://js.arcgis.com/4.10/"></script>
+
+
+    <script type="text/plain" id="nesteRenholdMin">
+        var minutter = DateDiff(Now(), $feature["sist_vasket"], 'minutes') return round($feature.Vaskefrekvens-minutter,0)
+    </script>
+
+    <script type="text/plain" id="sistRenholdMin">
+        return round(DateDiff(Now(), $feature["sist_vasket"], 'minutes'), 0)
+    </script>
+
+    <script type="text/plain" id="renholdStatus">
+        if ( $feature.Status == 2) { return 0 } else { return $feature["avg_60"] }
+    </script>
+
+
+
+
+
+    <script>
+        require([
+            "esri/WebScene",
+            "esri/views/SceneView",
+            "esri/layers/StreamLayer",
+            "esri/layers/FeatureLayer",
+            "esri/widgets/LayerList",
+            "esri/webscene/Slide",
+            "esri/renderers/smartMapping/creators/color",
+            "esri/renderers/ClassBreaksRenderer",
+            "dojo/on",
+            'dojo/dom',
+            'dojo/dom-style',
+            "dojo/domReady!",
+            "esri/widgets/Feature",
+            "esri/symbols/ObjectSymbol3DLayer"
+
+        ], function(WebScene, SceneView, StreamLayer, FeatureLayer, LayerList, Slide, colorRendererCreator, ClassBreaksRenderer, on, dom, domStyle, Feature, ObjectSymbol3DLayer) {
+
+            const storelse = 100;
+
+            var renderer2 = {
+                type: "simple", // autocasts as new SimpleRenderer()
+                symbol: {
+                    type: "web-style", // autocasts as new WebStyleSymbol()
+                    styleName: "esriRealisticTreesStyle",
+                    name: "Other"
+                },
+            };
+
+            var GIFrendrer = {
+                type: "picture-marker", // autocasts as new PictureMarkerSymbol()
+                url: "https://static.arcgis.com/images/Symbols/Shapes/BlackStarLargeB.png",
+                width: "64px",
+                height: "64px"
+            };
+
+            var verticalOffset = {
+                screenLength: 5,
+                maxWorldLength: 25,
+                minWorldLength: 4
+            };
+
+
+            function getUniqueValueSymbol(name, color) {
+                // The point symbol is visualized with an icon symbol. To clearly see the location of the point
+                // we displace the icon vertically and add a callout line. The line connects the offseted symbol with the location
+                // of the point feature.
+                return {
+                    type: "point-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "icon", // autocasts as new IconSymbol3DLayer()
+                        resource: {
+                            href: name
+                        },
+                        size: 40,
+                        outline: {
+                            color: "white",
+                            size: 10
+                        }
+                    }],
+
+                    verticalOffset: verticalOffset,
+
+                    callout: {
+                        type: "line", // autocasts as new LineCallout3D()
+                        color: "white",
+                        size: 5,
+                        border: {
+                            color: color
+                        }
+                    }
+                };
+            }
+
+            var pointsRenderer = {
+                type: "unique-value", // autocasts as new UniqueValueRenderer()
+                field: "tilt",
+                uniqueValueInfos: [{
+                    value: 100,
+                    symbol: getUniqueValueSymbol("personLedig.png", "#d63031")
+                }, {
+                    value: 101,
+                    symbol: getUniqueValueSymbol("personOpptatt.png", "#81ecec")
+                        // }, 
+                        // {
+                        // value: "Person3",
+                        // symbol: getUniqueValueSymbol("personOpptatt.png", "#74b9ff")
+                        // }, {
+                        // value: "Person4",
+                        // symbol: getUniqueValueSymbol("personOpptatt.png", "#a29bfe")
+                        // }, {
+                        // value: "Person5",
+                        // symbol: getUniqueValueSymbol("personOpptatt.png", "#00b894")
+                        // },{
+                        // value: "Person6",
+                        // symbol: getUniqueValueSymbol("personOpptatt.png", "#fab1a0")
+                }]
+            };
+
+
+            var personsymbol = [{
+                value: "Person1",
+                name: "Standing Inverted Cone",
+            }, {
+                value: "Person2",
+                name: "Standing Inverted Cone",
+            }, {
+                value: "Person3",
+                name: "Standing Cylinder",
+            }, {
+                value: "Person4",
+                name: "Standing Inverted Cone",
+            }, {
+                value: "Person5",
+                name: "Standing Inverted Cone",
+            }, {
+                value: "Person6",
+                name: "Standing Inverted Cone",
+            }];
+
+            var transportationRenderer = {
+                type: "unique-value", // autocasts as new UniqueValueRenderer()
+                field: "name",
+                uniqueValueInfos: personsymbol.map(function(type) {
+                    return {
+                        value: type.value,
+                        symbol: {
+                            type: "web-style", // autocasts as new WebStyleSymbol()
+                            name: type.name,
+                            styleName: "EsriThematicShapesStyle"
+                        }
+                    }
+                }),
+
+                visualVariables: [{
+                    type: "rotation",
+                    // cars need to have a rotation field so that they are aligned to the street
+                    field: "bearing"
+                }, {
+                    type: "size",
+                    minSize: 5,
+                    maxSize: 15,
+                    axis: "depth"
+                }, {
+                    type: "color",
+                    field: "name",
+                    stops: [{
+                        value: "Person1",
+                        color: "#d63031",
+                    }, {
+                        value: "Person2",
+                        color: "#81ecec",
+                    }, {
+                        value: "Person3",
+                        color: "#74b9ff",
+                    }, {
+                        value: "Person4",
+                        color: "#a29bfe",
+                    }, {
+                        value: "Person5",
+                        color: "#00b894",
+                    }, {
+                        value: "Person6",
+                        color: "#fab1a0",
+                    }],
+
+                }]
+            };
+
+
+            var FlateRenderer = new ClassBreaksRenderer({
+                // type: "class-breaks",
+                // attribute of interest - Earthquake magnitude
+                valueExpression: "if ( $feature.Status == 2) {return 0} else {return $feature.LastUpdate}"
+            });
+            // All features with magnitude between 0 - 4.0
+            FlateRenderer.addClassBreakInfo({
+                minValue: 0.0,
+                maxValue: 1.0,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#4286f4"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+
+            FlateRenderer.addClassBreakInfo({
+                minValue: 1.0,
+                maxValue: 1.75,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#ec1d23"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+            // All features with magnitude between 4.1 - 7.0
+            FlateRenderer.addClassBreakInfo({
+                minValue: 1.76,
+                maxValue: 2.5,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#f37b7d"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+
+            FlateRenderer.addClassBreakInfo({
+                minValue: 2.51,
+                maxValue: 3.25,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#97cc73"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+            FlateRenderer.addClassBreakInfo({
+                minValue: 3.26,
+                maxValue: 5.0,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#009d2f"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+
+
+
+            var PresentSymbol = {
+                type: "polygon-3d", // autocasts as new PolygonSymbol3D()
+                symbolLayers: [{
+                    type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                    material: {
+                        color: "#4286f4"
+                    },
+                    size: 5.6
+                }]
+            };
+
+            var NotPresentSymbol = {
+                type: "polygon-3d", // autocasts as new PolygonSymbol3D()
+                symbolLayers: [{
+                    type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                    material: {
+                        color: "#f44141"
+                    },
+                    size: 5.6
+                }]
+            };
+
+            var DisTechRendrerPROX = {
+                type: "unique-value", // autocasts as new UniqueValueRenderer()
+                defaultSymbol: {
+                    type: "polygon-3d", // autocasts as new PolygonSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ExtrudeSymbol3DLayer()
+                        material: {
+                            color: "#A7C636"
+                        },
+                        edges: {
+                            type: "solid",
+                            color: "#4d5b18",
+                            size: 1.5
+                        }
+                    }]
+                },
+                defaultLabel: "Other",
+                field: "Status",
+                uniqueValueInfos: [{
+                    value: "PRESENT",
+                    symbol: PresentSymbol,
+                    label: "Residential"
+                }, {
+                    value: "NOT_PRESENT",
+                    symbol: NotPresentSymbol,
+                    label: "Condominium"
+                }],
+
+            };
+
+
+
+
+
+
+
+
+
+
+
+            var FlateRendererDistTech = new ClassBreaksRenderer({
+                // type: "class-breaks",
+                // attribute of interest - Earthquake magnitude
+                valueExpression: "if ( $feature.ETASJE_TOPOLOGISK == 50) {return 0} else {return $feature.Temp}"
+            });
+            // All features with magnitude between 0 - 4.0
+            FlateRendererDistTech.addClassBreakInfo({
+                minValue: 0.0,
+                maxValue: 1.0,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#4286f4"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+
+            FlateRendererDistTech.addClassBreakInfo({
+                minValue: 1.0,
+                maxValue: 1.75,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#ec1d23"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+            // All features with magnitude between 4.1 - 7.0
+            FlateRendererDistTech.addClassBreakInfo({
+                minValue: 1.76,
+                maxValue: 2.5,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#f37b7d"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+
+            FlateRendererDistTech.addClassBreakInfo({
+                minValue: 21,
+                maxValue: 24.5,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#42f480"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+            FlateRendererDistTech.addClassBreakInfo({
+                minValue: 24.6,
+                maxValue: 50,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#e50d18"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+
+
+
+
+            var FlateRendererDistTechProx = new ClassBreaksRenderer({
+                // type: "class-breaks",
+                // attribute of interest - Earthquake magnitude
+                valueExpression: "if ( $feature.ETASJE_TOPOLOGISK == 50) {return 0} else {return $feature.Status}"
+            });
+            // All features with magnitude between 0 - 4.0
+            FlateRendererDistTech.addClassBreakInfo({
+                minValue: 0.0,
+                maxValue: 1.0,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#4286f4"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+
+            FlateRendererDistTech.addClassBreakInfo({
+                minValue: 1.0,
+                maxValue: 1.75,
+                symbol: {
+                    type: "polygon-3d", // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "extrude", // autocasts as new ObjectSymbol3DLayer()
+                        material: {
+                            color: "#ec1d23"
+                        },
+                        size: 5.6
+                    }]
+                }
+            });
+
+
+
+
+
+
+
+
+            var symbolLine = {
+                type: "line-3d", // autocasts as new LineSymbol3D()
+                symbolLayers: [{
+                    type: "path", // autocasts as new PathSymbol3DLayer()
+                    size: 20, // 20 meters in diameter
+                    material: {
+                        color: "#ff7380"
+                    }
+                }]
+            };
+
+            var arcadeExpressionInfos = [
+                // Get Arcade expression returning the predominant demographic in the county:
+                // Whether the majority of people are in the labor force or not
+                {
+                    name: "nesteRenholdMin",
+                    title: "nesteRenholdMin",
+                    expression: document.getElementById("nesteRenholdMin").text
+                }, {
+                    name: "sistRenholdMin",
+                    title: "sistRenholdMin",
+                    expression: document.getElementById("sistRenholdMin").text
+                },
+
+            ];
+
+
+
+            var template = {
+                // ZIP is the name of a field in the service containing the zip code number of the feature
+                title: "<center>{NAME}</center>",
+                expressionInfos: arcadeExpressionInfos,
+
+                content: "<center>{avg_60:bilde}</center> <br>Ratingindeksen den siste timen er <b>{avg_60:tekstfargeRating}</b> " +
+                    "kalkulert fra {count_60} stemmer.<br><br>" +
+                    "status {Status:tekstfargeStatus}.<br> Siste renhold utført for {expression/sistRenholdMin} minutter siden,<br> Neste renhold om {expression/nesteRenholdMin} min<br>" +
+                    "(Vaskefrekvens, hvert {Vaskefrekvens}. min)"
+            };
+
+
+
+            tekstfargeRating = function(value, key, data) {
+                if (data.avg_60 <= 1.75) {
+                    return "<span style='color: " +
+                        ("#ec1d23") + ";'>" +
+                        data.avg_60.toFixed(2) + "</span>";
+                } else if (data.avg_60 > 1.75 && data.avg_60 <= 2.5) {
+                    return "<span style='color: " +
+                        ("#f37b7d") + ";'>" +
+                        data.avg_60.toFixed(2) + "</span>";
+                } else if (data.avg_60 > 2.5 && data.avg_60 <= 3.25) {
+                    return "<span style='color: " +
+                        ("#97cc73") + ";'>" +
+                        data.avg_60.toFixed(2) + "</span>";
+                } else if (data.avg_60 > 3.25 && data.avg_60 <= 5) {
+                    return "<span style='color: " +
+                        ("#009d2f") + ";'>" +
+                        data.avg_60.toFixed(2) + "</span>";
+                }
+            };
+
+            tekstfargeStatus = function(value, key, data) {
+                if (data.Status == "Behov for renhold") {
+                    return "<span style='color: " +
+                        ("#ec1d23") + ";'>" +
+                        data.Status + "</span>";
+                } else if (data.Status == "Renhold pågår") {
+                    return "<span style='color: " +
+                        ("#4286f4") + ";'>" +
+                        data.Status + "</span>";
+                } else if (data.Status == "Renholdsoppdrag opprettet") {
+                    return "<span style='color: " +
+                        ("#ffeaa7") + ";'>" +
+                        data.Status + "</span>";
+                } else if (data.Status == "I drift") {
+                    return "<span style='color: " +
+                        ("#55efc4") + ";'>" +
+                        data.Status + "</span>";
+                }
+            };
+
+            bilde = function(value, key, data) {
+                // calculate the population percent change from 2010 to 2013.
+                if (data.avg_60 <= 1.75) {
+                    return "<img src=' http://demo01.geodata.no/smileysurvey/images/1.png' width=10%  />"
+                } else if (data.avg_60 > 1.75 && data.avg_60 <= 2.5) {
+                    return "<img src=' http://demo01.geodata.no/smileysurvey/images/2.png' width=10%/>"
+                } else if (data.avg_60 > 2.5 && data.avg_60 <= 3.25) {
+                    return "<img src=' http://demo01.geodata.no/smileysurvey/images/3.png' width=10%/>"
+                } else if (data.avg_60 > 3.25 && data.avg_60 <= 5) {
+                    return "<img src=' http://demo01.geodata.no/smileysurvey/images/4.png' width=10%/>"
+                }
+            };
+
+
+            function get3DSymbolFor(name) {
+                return {
+                    type: "point-3d",
+                    visualVariables: [{
+                        type: "rotation",
+                        // cars need to have a rotation field so that they are aligned to the street
+                        field: "bearing"
+                    }], // autocasts as new PointSymbol3D()
+                    symbolLayers: [{
+                        type: "object",
+                        //width: 50000, // width of the symbol in meters
+                        //height: 20000,// autocasts as new ObjectSymbol3DLayer()
+                        anchor: "center",
+                        heading: 180,
+                        resource: {
+                            href: "https://demo09.geodata.no/geotek/symbol/" + name + ".json"
+                        }
+
+                    }]
+                };
+            }
+
+            const mineSymbolerForRendererFly = [{
+                value: "Flybuss",
+                name: "buss"
+            }, {
+                value: "Trapp1",
+                name: "bagasjebil"
+            }, {
+                value: "BagasjeTruck1",
+                name: "bagasjebil"
+            }, {
+                value: "Fly Track_1",
+                name: "FlyNorwegian"
+            }, {
+                value: "Fly Track_2",
+                name: "FlySAS"
+            }, {
+                value: "Fly Track_3",
+                name: "FlyNorwegian"
+            }, ];
+
+            var defaultSymbolForRendererFly = get3DSymbolFor("");
+
+            var rendererFly = {
+                type: "unique-value",
+                field: "name",
+                defaultSymbol: defaultSymbolForRendererFly,
+                uniqueValueInfos: mineSymbolerForRendererFly.map(s => {
+                    return {
+                        value: s.value,
+                        symbol: get3DSymbolFor(s.name)
+                    };
+                }),
+                visualVariables: [{
+                    type: "rotation",
+                    field: "bearing"
+                }]
+            };
+
+
+
+            const streamLayerFlate = new FeatureLayer({
+                url: "https://services.arcgis.com/2JyTvMWQSnM2Vi8q/arcgis/rest/services/ToalettEtasjeF/FeatureServer/0",
+                outFields: ["*"],
+                purgeOptions: {
+                    displayCount: 1000
+                },
+                renderer: FlateRenderer,
+                popupTemplate: template,
+                refreshInterval: 0.01,
+                elevationInfo: {
+                    // elevation mode that will place points on top of the buildings or other SceneLayer 3D objects
+                    mode: "absolute-height",
+                    offset: 210.5
+                },
+            });
+
+            const DistTech_TEMP = new FeatureLayer({
+                url: "https://services.arcgis.com/2JyTvMWQSnM2Vi8q/ArcGIS/rest/services/DisTechOSL/FeatureServer/1",
+                outFields: ["*"],
+                purgeOptions: {
+                    displayCount: 1000
+                },
+                renderer: FlateRendererDistTech,
+                popupTemplate: template,
+                refreshInterval: 0.01,
+                elevationInfo: {
+                    // elevation mode that will place points on top of the buildings or other SceneLayer 3D objects
+                    mode: "absolute-height",
+                    offset: 210.5
+                },
+            });
+
+            const DistTech_PROX = new FeatureLayer({
+                url: "https://services.arcgis.com/2JyTvMWQSnM2Vi8q/ArcGIS/rest/services/DisTechOSL/FeatureServer/2",
+                outFields: ["*"],
+                purgeOptions: {
+                    displayCount: 1000
+                },
+                renderer: DisTechRendrerPROX,
+                popupTemplate: template,
+                refreshInterval: 0.01,
+                elevationInfo: {
+                    // elevation mode that will place points on top of the buildings or other SceneLayer 3D objects
+                    mode: "absolute-height",
+                    offset: 205
+                },
+            });
+
+
+
+
+            var streamLayerFlyogBakke = new StreamLayer({
+                url: "https://demo09.geodata.no/arcgis/rest/services/Flight_Simulator_Stream/StreamServer",
+                purgeOptions: {
+                    displayCount: 1000
+                },
+                renderer: rendererFly,
+                elevationInfo: {
+                    // elevation mode that will place points on top of the buildings or other SceneLayer 3D objects
+                    mode: "absolute-height",
+                    offset: 1.5
+                },
+            });
+
+
+            var streamLayerPersoner = new StreamLayer({
+                url: "https://demo09.geodata.no/arcgis/rest/services/Flight_Simulator_Stream/StreamServer",
+                purgeOptions: {
+                    displayCount: 1000
+                },
+                renderer: pointsRenderer,
+                elevationInfo: {
+                    // elevation mode that will place points on top of the buildings or other SceneLayer 3D objects
+                    mode: "absolute-height",
+                    offset: 0
+                },
+            });
+
+            var streamLayerPerson = new StreamLayer({
+                url: "https://demo09.geodata.no/arcgis/rest/services/Flight_Simulator_Stream/StreamServer",
+                purgeOptions: {
+                    displayCount: 1000
+                },
+                renderer: pointsRenderer,
+                elevationInfo: {
+                    // elevation mode that will place points on top of the buildings or other SceneLayer 3D objects
+                    mode: "absolute-height",
+                    offset: 0
+                },
+            });
+
+
+            const webscene = new WebScene({
+                portalItem: {
+                    id: "fa1c8958272b43f4a175452cbd533afa"
+                },
+                layers: [streamLayerFlate]
+
+
+            });
+
+
+
+            var layerList = new LayerList({
+                view: view
+            });
+            // Adds widget below other elements in the top left corner of the view
+
+            var view = new SceneView({
+                container: "viewDiv",
+                highlightOptions: {
+                    color: "#e8175d"
+                },
+                qualityProfile: "high",
+                popup: {
+                    dockEnabled: true,
+                    dockOptions: {
+                        // Disables the dock button from the popup
+                        buttonEnabled: true,
+                        // Ignore the default sizes that trigger responsive docking
+                        breakpoint: false,
+
+                        position: "top-center",
+                    }
+                },
+
+                map: webscene
+            });
+            popup = view.popup;
+
+            // view.when(function() {
+            //     var layerList = new LayerList({
+            //         view: view
+            //     });
+            //     // Add widget to the top right corner of the view
+            //     view.ui.add(layerList, "top-right");           
+
+            // });    
+
+            // view.on("pointer-move", function(event) {
+            //     var screenPoint = {
+            //     x: event.x,
+            //     y: event.y
+            //     };
+            //     // Search for graphics at the clicked location
+            //     view.hitTest(screenPoint).then(function(response) {
+            //         var result = response.results[0].graphic.attributes.name;
+
+            //         view.popup.open({
+            //             title: response.results[0].graphic.attributes.NAME
+            //         });
+
+            //         if (result) {
+            //         var lon = result.mapPoint.longitude;
+            //         var lat = result.mapPoint.latitude;
+            //         console.log(response);
+            //     }
+            // });
+            // });  
+
+            //webscene.add(streamLayerFlate);
+            //webscene.add(streamLayerPerson);
+            webscene.add(DistTech_TEMP);
+            webscene.add(DistTech_PROX);
+
+
+
+            view.ui.add(["createSlideDiv", "slidesDiv"], "bottom-left");
+
+            function createSlideUI(slide, placement) {
+                var slideElement = document.createElement("div");
+                slideElement.id = slide.id;
+                slideElement.classList.add("slide");
+
+                var slidesDiv = document.getElementById("slidesDiv");
+                if (placement === "first") {
+                    slidesDiv.insertBefore(slideElement, slidesDiv.firstChild);
+                } else {
+                    slidesDiv.appendChild(slideElement);
+                }
+
+                var title = document.createElement("div");
+                title.innerText = slide.title.text;
+                // Place the title of the slide in the <div> element
+                slideElement.appendChild(title);
+
+                var img = new Image();
+                // Set the src URL of the image to the thumbnail URL of the slide
+                img.src = slide.thumbnail.url;
+                // Set the title property of the image to the title of the slide
+                img.title = slide.title.text;
+                // Place the image inside the new <div> element
+                slideElement.appendChild(img);
+                slideElement.addEventListener("click", function() {
+                    var slides = document.querySelectorAll(".slide");
+                    Array.from(slides).forEach(function(node) {
+                        node.classList.remove("active");
+                    });
+                    slideElement.classList.add("active");
+                    slide.applyTo(view);
+                });
+            }
+            view.when(function() {
+                document.getElementById("slidesDiv").style.visibility = "visible";
+                var slides = webscene.presentation.slides;
+                slides.forEach(createSlideUI);
+                document.getElementById("createSlideButton").addEventListener("click", function() {
+                    Slide.createFrom(view).then(function(slide) {
+                        slide.title.text = document.getElementById("createSlideTitleInput").value;
+                        webscene.presentation.slides.add(slide);
+                        createSlideUI(slide, "first");
+                    });
+                });
+
+            });
+
+            webscene.add(streamLayerFlyogBakke);
+            webscene.add(streamLayerPersoner);
+
+
+
+        });
+    </script>
+</head>
+
+<body>
+    <div id="viewDiv"></div>
+    <!-- <div id="createSlideDiv">
+        Lag ny slide: <input type="text" id="createSlideTitleInput" size="10" />
+        <button id="createSlideButton">kjør</button>
+    </div>
+    <div id="slidesDiv"></div> -->
+</body>
+
+</html>
